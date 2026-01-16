@@ -38,29 +38,26 @@
     {
       "parameters": {
         "method": "POST",
-        "url": "=https://instagram-scraper-api2.p.rapidapi.com/v1/reels",
-        "authentication": "predefinedCredentialType",
-        "nodeCredentialType": "rapidApi",
+        "url": "https://instagram120.p.rapidapi.com/api/instagram/posts",
+        "authentication": "none",
         "sendQuery": false,
         "sendBody": true,
-        "bodyParameters": {
-          "parameters": [
-            {
-              "name": "username",
-              "value": "={{ $json.instagram_username }}"
-            }
-          ]
-        },
+        "contentType": "json",
+        "body": "={{ {\"username\": $json.instagram_username, \"maxId\": \"\"} }}",
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
             {
-              "name": "X-RapidAPI-Key",
-              "value": "={{ $credentials.rapidApiKey }}"
+              "name": "Content-Type",
+              "value": "application/json"
             },
             {
-              "name": "X-RapidAPI-Host",
-              "value": "instagram-scraper-api2.p.rapidapi.com"
+              "name": "x-rapidapi-host",
+              "value": "instagram120.p.rapidapi.com"
+            },
+            {
+              "name": "x-rapidapi-key",
+              "value": "5b8cd87d9bmsh05265f7508e8382p1e3ef0jsn76f481ccab38"
             }
           ]
         },
@@ -71,11 +68,11 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.1,
       "position": [690, 300],
-      "notes": "Fetches user's Instagram reels using RapidAPI"
+      "notes": "Fetches user's Instagram posts using Instagram120 RapidAPI"
     },
     {
       "parameters": {
-        "jsCode": "// Sort reels by view count and take top 10\nconst items = $input.all();\nconst reelsData = items[0].json.data.reels || [];\n\n// Sort by view count (descending)\nconst sortedReels = reelsData\n  .sort((a, b) => (b.play_count || 0) - (a.play_count || 0))\n  .slice(0, 10);\n\n// Return formatted items\nreturn sortedReels.map((reel, index) => ({\n  json: {\n    reel_number: index + 1,\n    reel_id: reel.id,\n    video_url: reel.video_url,\n    thumbnail: reel.thumbnail_url,\n    caption: reel.caption?.text || '',\n    view_count: reel.play_count || 0,\n    like_count: reel.like_count || 0,\n    comment_count: reel.comment_count || 0,\n    created_at: reel.taken_at,\n    username: $('Extract Username').first().json.instagram_username\n  }\n}));"
+        "jsCode": "// Sort posts by view count and filter for video/reels only, take top 10\nconst items = $input.all();\nconst response = items[0].json;\nconst posts = response.data?.items || [];\n\n// Filter for videos/reels only and sort by play count\nconst videoReels = posts\n  .filter(post => post.video_versions && post.video_versions.length > 0)\n  .sort((a, b) => (b.play_count || 0) - (a.play_count || 0))\n  .slice(0, 10);\n\n// Return formatted items\nreturn videoReels.map((reel, index) => ({\n  json: {\n    reel_number: index + 1,\n    reel_id: reel.id,\n    video_url: reel.video_versions?.[0]?.url || '',\n    thumbnail: reel.image_versions2?.candidates?.[0]?.url || '',\n    caption: reel.caption?.text || '',\n    view_count: reel.play_count || 0,\n    like_count: reel.like_count || 0,\n    comment_count: reel.comment_count || 0,\n    created_at: reel.taken_at,\n    username: $('Extract Username').first().json.instagram_username\n  }\n}));"
       },
       "id": "sort-top-reels",
       "name": "Sort & Get Top 10",
