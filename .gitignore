@@ -19,3 +19,4 @@ Thumbs.db
 
 # Node modules (if any scripts are added)
 node_modules/
+package-lock.json

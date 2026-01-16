@@ -1,0 +1,12 @@
+# Dependencies
+node_modules/
+
+# Build outputs
+dist/
+build/
+
+# Git
+.git/
+
+# Workflow files (preserve n8n formatting)
+workflows/*.json

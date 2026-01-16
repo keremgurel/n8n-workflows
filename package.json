@@ -1,0 +1,28 @@
+{
+  "name": "n8n-workflows",
+  "version": "1.0.0",
+  "description": "This repository contains n8n workflows created using n8n MCP and n8n skills.",
+  "main": "index.js",
+  "directories": {
+    "doc": "docs"
+  },
+  "scripts": {
+    "format": "prettier --write \"**/*.{js,json,md}\"",
+    "format:check": "prettier --check \"**/*.{js,json,md}\"",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/keremgurel/n8n-workflows.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/keremgurel/n8n-workflows/issues"
+  },
+  "homepage": "https://github.com/keremgurel/n8n-workflows#readme",
+  "devDependencies": {
+    "prettier": "^3.8.0"
+  }
+}
