@@ -1,0 +1,436 @@
+{
+  "name": "Instagram Reel Transcription & Analysis",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "instagram-analysis",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "webhook-trigger",
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [250, 300]
+    },
+    {
+      "parameters": {
+        "values": {
+          "string": [
+            {
+              "name": "instagram_username",
+              "value": "={{$json.body.username}}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "extract-username",
+      "name": "Extract Username",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 1,
+      "position": [450, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.apify.com/v2/acts/apify~instagram-profile-scraper/run-sync-get-dataset-items",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "usernames",
+              "value": "=[\"{{$json.instagram_username}}\"]"
+            },
+            {
+              "name": "resultsType",
+              "value": "posts"
+            },
+            {
+              "name": "resultsLimit",
+              "value": "10"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "fetch-reels",
+      "name": "Fetch Instagram Reels",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 3,
+      "position": [650, 300],
+      "notes": "Uses Apify Instagram scraper. You can also use RapidAPI or other services."
+    },
+    {
+      "parameters": {
+        "batchSize": 1,
+        "options": {}
+      },
+      "id": "split-reels",
+      "name": "Split Into Reels",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 1,
+      "position": [850, 300]
+    },
+    {
+      "parameters": {
+        "url": "={{$json.videoUrl}}",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "file"
+            }
+          }
+        }
+      },
+      "id": "download-video",
+      "name": "Download Video",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 3,
+      "position": [1050, 300]
+    },
+    {
+      "parameters": {
+        "operation": "transcribe",
+        "binaryPropertyName": "data",
+        "options": {}
+      },
+      "id": "transcribe-audio",
+      "name": "Transcribe with Whisper",
+      "type": "n8n-nodes-base.openAi",
+      "typeVersion": 1,
+      "position": [1250, 300],
+      "credentials": {
+        "openAiApi": {
+          "id": "1",
+          "name": "OpenAI API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "model": "gpt-4-turbo-preview",
+        "options": {},
+        "text": "=Summarize this video transcript concisely in 2-3 sentences, capturing the main points and key messages:\\n\\n{{$json.text}}"
+      },
+      "id": "generate-summary",
+      "name": "Generate Summary",
+      "type": "n8n-nodes-base.openAi",
+      "typeVersion": 1,
+      "position": [1450, 200],
+      "credentials": {
+        "openAiApi": {
+          "id": "1",
+          "name": "OpenAI API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "model": "gpt-4-turbo-preview",
+        "options": {},
+        "text": "=Based on this transcript, create an original, improved version that is more engaging. Expand or shorten as needed for better impact. Make it unique while preserving the core message:\\n\\n{{$json.text}}"
+      },
+      "id": "recreate-content",
+      "name": "Recreate Content",
+      "type": "n8n-nodes-base.openAi",
+      "typeVersion": 1,
+      "position": [1450, 300],
+      "credentials": {
+        "openAiApi": {
+          "id": "1",
+          "name": "OpenAI API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "values": {
+          "string": [
+            {
+              "name": "video_url",
+              "value": "={{$json.videoUrl}}"
+            },
+            {
+              "name": "transcript",
+              "value": "={{$json.text}}"
+            },
+            {
+              "name": "summary",
+              "value": "={{$node[\"Generate Summary\"].json.message.content}}"
+            },
+            {
+              "name": "recreated",
+              "value": "={{$node[\"Recreate Content\"].json.message.content}}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "combine-results",
+      "name": "Combine Results",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 1,
+      "position": [1650, 300]
+    },
+    {
+      "parameters": {},
+      "id": "loop-back",
+      "name": "Loop Back",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 1,
+      "position": [1850, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Aggregate all video data\\nconst allVideos = items.map(item => item.json);\\n\\n// Generate content ideas prompt\\nconst themesText = allVideos.map((v, i) => `Video ${i+1}: ${v.summary}`).join('\\\\n');\\n\\nreturn [{\\n  json: {\\n    videos: allVideos,\\n    themesText: themesText\\n  }\\n}];"
+      },
+      "id": "aggregate-data",
+      "name": "Aggregate All Videos",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 1,
+      "position": [2050, 300]
+    },
+    {
+      "parameters": {
+        "model": "gpt-4-turbo-preview",
+        "options": {
+          "temperature": 0.8,
+          "maxTokens": 2000
+        },
+        "text": "=Based on these video themes, generate 5 similar content ideas with complete scripts that would resonate with the same audience. For each idea, provide:\\n1. Title\\n2. Concept (2-3 sentences)\\n3. Full Script (detailed, ready to film)\\n\\nVideo Themes:\\n{{$json.themesText}}"
+      },
+      "id": "generate-ideas",
+      "name": "Generate Content Ideas",
+      "type": "n8n-nodes-base.openAi",
+      "typeVersion": 1,
+      "position": [2250, 300],
+      "credentials": {
+        "openAiApi": {
+          "id": "1",
+          "name": "OpenAI API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Format Google Doc content\\nconst videos = $input.first().json.videos;\\nconst contentIdeas = $node[\\"Generate Content Ideas\\"].json.message.content;\\nconst username = videos[0].video_url.match(/@([^/]+)/)?.[1] || 'unknown';\\n\\n// Build document structure\\nlet docContent = `# Instagram Content Analysis - @${username}\\\\n\\\\n`;\\n\\n// Section 1: Video Summaries\\ndocContent += `## 1. Video Summaries\\\\n\\\\n`;\\nvideos.forEach((video, i) => {\\n  docContent += `### Video ${i + 1}\\\\n`;\\n  docContent += `**Summary**: ${video.summary}\\\\n\\\\n`;\\n});\\n\\n// Section 2: Recreatable Content\\ndocContent += `## 2. Recreatable Content Versions\\\\n\\\\n`;\\nvideos.forEach((video, i) => {\\n  docContent += `### Video ${i + 1}: Enhanced Script\\\\n`;\\n  docContent += `${video.recreated}\\\\n\\\\n`;\\n});\\n\\n// Section 3: Similar Content Ideas\\ndocContent += `## 3. Similar Content Ideas & Scripts\\\\n\\\\n`;\\ndocContent += contentIdeas + '\\\\n\\\\n';\\n\\n// Section 4: Appendix - Full Transcripts\\ndocContent += `## Appendix: Full Transcripts\\\\n\\\\n`;\\nvideos.forEach((video, i) => {\\n  docContent += `### Video ${i + 1} Transcript\\\\n`;\\n  docContent += `${video.transcript}\\\\n\\\\n`;\\n  docContent += `---\\\\n\\\\n`;\\n});\\n\\nreturn [{\\n  json: {\\n    documentTitle: `Instagram Content Analysis - @${username}`,\\n    documentContent: docContent,\\n    username: username\\n  }\\n}];"
+      },
+      "id": "format-document",
+      "name": "Format Google Doc",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 1,
+      "position": [2450, 300]
+    },
+    {
+      "parameters": {
+        "operation": "create",
+        "title": "={{$json.documentTitle}}",
+        "documentData": "={{$json.documentContent}}",
+        "options": {}
+      },
+      "id": "create-google-doc",
+      "name": "Create Google Doc",
+      "type": "n8n-nodes-base.googleDocs",
+      "typeVersion": 1,
+      "position": [2650, 300],
+      "credentials": {
+        "googleDocsOAuth2Api": {
+          "id": "2",
+          "name": "Google Docs OAuth2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={\\n  \\"success\\": true,\\n  \\"document_url\\": \\"{{$json.documentUrl}}\\",\\n  \\"username\\": \\"{{$json.username}}\\",\\n  \\"videos_processed\\": 10\\n}",
+        "options": {}
+      },
+      "id": "respond",
+      "name": "Respond",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [2850, 300]
+    }
+  ],
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Extract Username",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract Username": {
+      "main": [
+        [
+          {
+            "node": "Fetch Instagram Reels",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Instagram Reels": {
+      "main": [
+        [
+          {
+            "node": "Split Into Reels",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Split Into Reels": {
+      "main": [
+        [
+          {
+            "node": "Download Video",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Download Video": {
+      "main": [
+        [
+          {
+            "node": "Transcribe with Whisper",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Transcribe with Whisper": {
+      "main": [
+        [
+          {
+            "node": "Generate Summary",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Recreate Content",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generate Summary": {
+      "main": [
+        [
+          {
+            "node": "Combine Results",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Recreate Content": {
+      "main": [
+        [
+          {
+            "node": "Combine Results",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Combine Results": {
+      "main": [
+        [
+          {
+            "node": "Loop Back",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Loop Back": {
+      "main": [
+        [
+          {
+            "node": "Aggregate All Videos",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Aggregate All Videos": {
+      "main": [
+        [
+          {
+            "node": "Generate Content Ideas",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generate Content Ideas": {
+      "main": [
+        [
+          {
+            "node": "Format Google Doc",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Google Doc": {
+      "main": [
+        [
+          {
+            "node": "Create Google Doc",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create Google Doc": {
+      "main": [
+        [
+          {
+            "node": "Respond",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {},
+  "staticData": null,
+  "tags": [],
+  "triggerCount": 1,
+  "updatedAt": "2026-01-16T00:00:00.000Z",
+  "versionId": "1"
+}

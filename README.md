@@ -33,4 +33,27 @@ To use these workflows:
 
 ## Workflows
 
-Workflows will be listed here as they are created.
+### 1. Instagram Reel Transcription & Content Analysis
+
+**Status**: Ready for implementation
+**File**: `workflows/instagram-transcription-template.json`
+**Documentation**: [docs/instagram-transcription-workflow.md](docs/instagram-transcription-workflow.md)
+**Implementation Guide**: [docs/implementation-guide.md](docs/implementation-guide.md)
+
+**Description**: Analyzes Instagram profiles by fetching top 10 reels, transcribing videos, generating summaries, creating recreated content versions, suggesting similar content ideas with scripts, and compiling everything into a formatted Google Doc.
+
+**Features**:
+- Webhook trigger accepts Instagram username
+- Fetches top 10 most-watched reels
+- Transcribes videos using OpenAI Whisper
+- Generates AI-powered summaries
+- Creates improved, original content versions
+- Suggests 5 similar content ideas with full scripts
+- Outputs formatted Google Doc with all sections
+
+**Requirements**:
+- OpenAI API key (Whisper + GPT-4)
+- Instagram data source (Apify, RapidAPI, or custom)
+- Google Docs OAuth2 credentials
+
+**Processing Time**: ~10-15 minutes for 10 videos

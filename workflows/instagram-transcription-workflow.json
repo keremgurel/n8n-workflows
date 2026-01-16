@@ -1,0 +1,370 @@
+{
+  "name": "Instagram Reel Transcription & Content Analysis",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "instagram-analysis",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "webhook-trigger",
+      "name": "Webhook Trigger",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1.1,
+      "position": [250, 300],
+      "webhookId": "instagram-analysis"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "username-extract",
+              "name": "instagram_username",
+              "value": "={{ $json.body.username }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "extract-username",
+      "name": "Extract Username",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.2,
+      "position": [470, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://instagram-scraper-api2.p.rapidapi.com/v1/reels",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "rapidApi",
+        "sendQuery": false,
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "username",
+              "value": "={{ $json.instagram_username }}"
+            }
+          ]
+        },
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-RapidAPI-Key",
+              "value": "={{ $credentials.rapidApiKey }}"
+            },
+            {
+              "name": "X-RapidAPI-Host",
+              "value": "instagram-scraper-api2.p.rapidapi.com"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "fetch-reels",
+      "name": "Fetch Instagram Reels",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [690, 300],
+      "notes": "Fetches user's Instagram reels using RapidAPI"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Sort reels by view count and take top 10\nconst items = $input.all();\nconst reelsData = items[0].json.data.reels || [];\n\n// Sort by view count (descending)\nconst sortedReels = reelsData\n  .sort((a, b) => (b.play_count || 0) - (a.play_count || 0))\n  .slice(0, 10);\n\n// Return formatted items\nreturn sortedReels.map((reel, index) => ({\n  json: {\n    reel_number: index + 1,\n    reel_id: reel.id,\n    video_url: reel.video_url,\n    thumbnail: reel.thumbnail_url,\n    caption: reel.caption?.text || '',\n    view_count: reel.play_count || 0,\n    like_count: reel.like_count || 0,\n    comment_count: reel.comment_count || 0,\n    created_at: reel.taken_at,\n    username: $('Extract Username').first().json.instagram_username\n  }\n}));"
+      },
+      "id": "sort-top-reels",
+      "name": "Sort & Get Top 10",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [910, 300]
+    },
+    {
+      "parameters": {
+        "url": "={{ $json.video_url }}",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "file"
+            }
+          }
+        }
+      },
+      "id": "download-video",
+      "name": "Download Video",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [1130, 300]
+    },
+    {
+      "parameters": {
+        "resource": "audio",
+        "operation": "transcribe",
+        "binaryPropertyName": "data",
+        "options": {
+          "language": "en"
+        }
+      },
+      "id": "transcribe-audio",
+      "name": "Transcribe with Whisper",
+      "type": "n8n-nodes-base.openAi",
+      "typeVersion": 1.3,
+      "position": [1350, 300],
+      "credentials": {
+        "openAiApi": {
+          "id": "openai-credentials",
+          "name": "OpenAI Account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "add-transcript",
+              "name": "transcript",
+              "value": "={{ $json.text }}",
+              "type": "string"
+            },
+            {
+              "id": "keep-reel-number",
+              "name": "reel_number",
+              "value": "={{ $('Sort & Get Top 10').item.json.reel_number }}",
+              "type": "number"
+            },
+            {
+              "id": "keep-video-url",
+              "name": "video_url",
+              "value": "={{ $('Sort & Get Top 10').item.json.video_url }}",
+              "type": "string"
+            },
+            {
+              "id": "keep-caption",
+              "name": "caption",
+              "value": "={{ $('Sort & Get Top 10').item.json.caption }}",
+              "type": "string"
+            },
+            {
+              "id": "keep-views",
+              "name": "view_count",
+              "value": "={{ $('Sort & Get Top 10').item.json.view_count }}",
+              "type": "number"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "merge-transcript-data",
+      "name": "Merge Transcript Data",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.2,
+      "position": [1570, 300]
+    },
+    {
+      "parameters": {
+        "resource": "text",
+        "operation": "message",
+        "model": "gpt-4-turbo-preview",
+        "messages": {
+          "values": [
+            {
+              "role": "system",
+              "content": "You are an expert content analyst. Create concise, engaging summaries of video content."
+            },
+            {
+              "role": "user",
+              "content": "=Summarize this Instagram reel transcript in 2-3 sentences, capturing the main points and key messages:\n\nTranscript: {{ $json.transcript }}\nCaption: {{ $json.caption }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "generate-summary",
+      "name": "Generate Summary",
+      "type": "n8n-nodes-base.openAi",
+      "typeVersion": 1.3,
+      "position": [1790, 200],
+      "credentials": {
+        "openAiApi": {
+          "id": "openai-credentials",
+          "name": "OpenAI Account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "resource": "text",
+        "operation": "message",
+        "model": "gpt-4-turbo-preview",
+        "messages": {
+          "values": [
+            {
+              "role": "system",
+              "content": "You are a creative content writer who creates original, engaging video scripts."
+            },
+            {
+              "role": "user",
+              "content": "=Based on this Instagram reel transcript, create an improved, original version that is more engaging and impactful. Expand or shorten as needed. Make it unique while preserving the core message:\n\nOriginal Transcript: {{ $json.transcript }}\nCaption: {{ $json.caption }}\n\nProvide:\n1. Hook (first 3 seconds)\n2. Main content\n3. Call to action"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "generate-recreated",
+      "name": "Generate Recreated Version",
+      "type": "n8n-nodes-base.openAi",
+      "typeVersion": 1.3,
+      "position": [1790, 400],
+      "credentials": {
+        "openAiApi": {
+          "id": "openai-credentials",
+          "name": "OpenAI Account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "mode": "combine",
+        "combineBy": "combineAll",
+        "options": {}
+      },
+      "id": "aggregate-all-data",
+      "name": "Aggregate All Data",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3,
+      "position": [2010, 300]
+    },
+    {
+      "parameters": {
+        "resource": "text",
+        "operation": "message",
+        "model": "gpt-4-turbo-preview",
+        "messages": {
+          "values": [
+            {
+              "role": "system",
+              "content": "You are a creative content strategist who generates innovative content ideas with complete scripts."
+            },
+            {
+              "role": "user",
+              "content": "=Based on these video themes and topics, generate 10 similar content ideas with COMPLETE scripts that would resonate with the same audience.\n\nVideo themes:\n{{ $json.summaries.join('\\n\\n') }}\n\nFor each idea provide:\n1. Title\n2. Concept (1-2 sentences)\n3. Hook (first 3-5 seconds)\n4. Main script (30-60 seconds)\n5. Call to action\n\nMake them original, engaging, and actionable."
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "generate-content-ideas",
+      "name": "Generate Content Ideas & Scripts",
+      "type": "n8n-nodes-base.openAi",
+      "typeVersion": 1.3,
+      "position": [2230, 300],
+      "credentials": {
+        "openAiApi": {
+          "id": "openai-credentials",
+          "name": "OpenAI Account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Format all data for Google Docs\nconst items = $input.all();\nconst username = items[0].json.username;\n\n// Collect all video data\nconst videos = items.map(item => ({\n  number: item.json.reel_number,\n  url: item.json.video_url,\n  caption: item.json.caption,\n  views: item.json.view_count,\n  transcript: item.json.transcript,\n  summary: item.json.summary,\n  recreated: item.json.recreated_version\n}));\n\nconst contentIdeas = $('Generate Content Ideas & Scripts').first().json.message?.content || '';\n\n// Format document content\nlet docContent = `Instagram Content Analysis - @${username}\\n\\n`;\n\n// Section 1: Video Summaries\ndocContent += `## 1. Video Summaries\\n\\n`;\nvideos.forEach(v => {\n  docContent += `### Video ${v.number}\\n`;\n  docContent += `- Views: ${v.views.toLocaleString()}\\n`;\n  docContent += `- URL: ${v.url}\\n`;\n  docContent += `- Summary: ${v.summary}\\n\\n`;\n});\n\n// Section 2: Recreated Versions\ndocContent += `\\n## 2. Recreatable Content Versions\\n\\n`;\nvideos.forEach(v => {\n  docContent += `### Video ${v.number}: Enhanced Script\\n`;\n  docContent += `${v.recreated}\\n\\n`;\n});\n\n// Section 3: Content Ideas\ndocContent += `\\n## 3. Similar Content Ideas & Scripts\\n\\n`;\ndocContent += contentIdeas;\n\n// Section 4: Appendix\ndocContent += `\\n\\n## Appendix: Full Transcripts\\n\\n`;\nvideos.forEach(v => {\n  docContent += `### Video ${v.number} Transcript\\n`;\n  if (v.caption) docContent += `**Caption:** ${v.caption}\\n\\n`;\n  docContent += `${v.transcript}\\n\\n---\\n\\n`;\n});\n\nreturn [\n  {\n    json: {\n      username,\n      document_title: `Instagram Content Analysis - @${username}`,\n      document_content: docContent,\n      video_count: videos.length\n    }\n  }\n];"
+      },
+      "id": "format-document",
+      "name": "Format Document Content",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2450, 300]
+    },
+    {
+      "parameters": {
+        "operation": "create",
+        "title": "={{ $json.document_title }}",
+        "bodyContent": "={{ $json.document_content }}",
+        "options": {}
+      },
+      "id": "create-google-doc",
+      "name": "Create Google Doc",
+      "type": "n8n-nodes-base.googleDocs",
+      "typeVersion": 2,
+      "position": [2670, 300],
+      "credentials": {
+        "googleDocsOAuth2Api": {
+          "id": "google-docs-credentials",
+          "name": "Google Docs Account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { \"success\": true, \"document_url\": $json.documentUrl, \"document_id\": $json.documentId, \"username\": $json.username, \"videos_processed\": $json.video_count } }}",
+        "options": {}
+      },
+      "id": "webhook-response",
+      "name": "Webhook Response",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [2890, 300]
+    }
+  ],
+  "connections": {
+    "Webhook Trigger": {
+      "main": [[{ "node": "Extract Username", "type": "main", "index": 0 }]]
+    },
+    "Extract Username": {
+      "main": [[{ "node": "Fetch Instagram Reels", "type": "main", "index": 0 }]]
+    },
+    "Fetch Instagram Reels": {
+      "main": [[{ "node": "Sort & Get Top 10", "type": "main", "index": 0 }]]
+    },
+    "Sort & Get Top 10": {
+      "main": [[{ "node": "Download Video", "type": "main", "index": 0 }]]
+    },
+    "Download Video": {
+      "main": [[{ "node": "Transcribe with Whisper", "type": "main", "index": 0 }]]
+    },
+    "Transcribe with Whisper": {
+      "main": [[{ "node": "Merge Transcript Data", "type": "main", "index": 0 }]]
+    },
+    "Merge Transcript Data": {
+      "main": [
+        [
+          { "node": "Generate Summary", "type": "main", "index": 0 },
+          { "node": "Generate Recreated Version", "type": "main", "index": 0 }
+        ]
+      ]
+    },
+    "Generate Summary": {
+      "main": [[{ "node": "Aggregate All Data", "type": "main", "index": 0 }]]
+    },
+    "Generate Recreated Version": {
+      "main": [[{ "node": "Aggregate All Data", "type": "main", "index": 1 }]]
+    },
+    "Aggregate All Data": {
+      "main": [[{ "node": "Generate Content Ideas & Scripts", "type": "main", "index": 0 }]]
+    },
+    "Generate Content Ideas & Scripts": {
+      "main": [[{ "node": "Format Document Content", "type": "main", "index": 0 }]]
+    },
+    "Format Document Content": {
+      "main": [[{ "node": "Create Google Doc", "type": "main", "index": 0 }]]
+    },
+    "Create Google Doc": {
+      "main": [[{ "node": "Webhook Response", "type": "main", "index": 0 }]]
+    }
+  },
+  "pinData": {},
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "tags": [],
+  "triggerCount": 1,
+  "updatedAt": "2026-01-16T07:00:00.000Z",
+  "versionId": "1"
+}
